@@ -3,6 +3,7 @@ package leakdetector
 import (
     "context"
     "encoding/json"
+    "log"
     "net/http"
 
     "github.com/comcast/fishymetrics/exporter"
@@ -61,37 +62,35 @@ func stateToValue(s string) float64 {
 
 // InitPlugin is called by Fishymetrics to start the plugin
 func InitPlugin(ctx context.Context, ex *exporter.Exporter) error {
-    ex.Logf("LeakDetector plugin started")
+    log.Printf("LeakDetector plugin started")
 
-    // Use a local HTTP client
     client := &http.Client{}
-
     collectionURL := "/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors"
 
     resp, err := client.Get(collectionURL)
     if err != nil {
-        ex.Logf("failed to fetch leak detectors: %v", err)
+        log.Printf("failed to fetch leak detectors: %v", err)
         return err
     }
     defer resp.Body.Close()
 
     var coll LeakDetectorsCollection
     if err := json.NewDecoder(resp.Body).Decode(&coll); err != nil {
-        ex.Logf("failed to decode leak detectors collection: %v", err)
+        log.Printf("failed to decode leak detectors collection: %v", err)
         return err
     }
 
     for _, m := range coll.Members {
         r2, err := client.Get(m.OdataId)
         if err != nil {
-            ex.Logf("failed to fetch %s: %v", m.OdataId, err)
+            log.Printf("failed to fetch %s: %v", m.OdataId, err)
             continue
         }
         defer r2.Body.Close()
 
         var det LeakDetector
         if err := json.NewDecoder(r2.Body).Decode(&det); err != nil {
-            ex.Logf("failed to decode leak detector %s: %v", m.OdataId, err)
+            log.Printf("failed to decode leak detector %s: %v", m.OdataId, err)
             continue
         }
 
