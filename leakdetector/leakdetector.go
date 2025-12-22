@@ -3,6 +3,7 @@ package leakdetector
 import (
     "context"
     "encoding/json"
+    "net/http"
 
     "github.com/comcast/fishymetrics/exporter"
     "github.com/prometheus/client_golang/prometheus"
@@ -16,7 +17,7 @@ type LeakDetectorsCollection struct {
 }
 
 type LeakDetector struct {
-    Id              string `json:"Id"`
+    Id               string `json:"Id"`
     LeakDetectorType string `json:"LeakDetectorType"`
     Status struct {
         Health string `json:"Health"`
@@ -38,49 +39,61 @@ var (
 
 func healthToValue(h string) float64 {
     switch h {
-    case "OK": return 0
-    case "Warning": return 1
-    case "Critical": return 2
+    case "OK":
+        return 0
+    case "Warning":
+        return 1
+    case "Critical":
+        return 2
     }
     return -1
 }
 
 func stateToValue(s string) float64 {
     switch s {
-    case "Enabled": return 1
-    case "Disabled": return 0
+    case "Enabled":
+        return 1
+    case "Disabled":
+        return 0
     }
     return -1
 }
 
-// InitPlugin called by Fishymetrics
+// InitPlugin is called by Fishymetrics to start the plugin
 func InitPlugin(ctx context.Context, ex *exporter.Exporter) error {
-    ex.Logger.Info("LeakDetector plugin started")
+    ex.Logf("LeakDetector plugin started")
 
-    client := ex.HTTPClient
+    // Use a local HTTP client
+    client := &http.Client{}
 
     collectionURL := "/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors"
 
     resp, err := client.Get(collectionURL)
     if err != nil {
-        ex.Logger.Errorf("failed to fetch leak detectors: %v", err)
+        ex.Logf("failed to fetch leak detectors: %v", err)
         return err
     }
     defer resp.Body.Close()
 
     var coll LeakDetectorsCollection
-    json.NewDecoder(resp.Body).Decode(&coll)
+    if err := json.NewDecoder(resp.Body).Decode(&coll); err != nil {
+        ex.Logf("failed to decode leak detectors collection: %v", err)
+        return err
+    }
 
     for _, m := range coll.Members {
         r2, err := client.Get(m.OdataId)
         if err != nil {
-            ex.Logger.Errorf("failed fetch %s: %v", m.OdataId, err)
+            ex.Logf("failed to fetch %s: %v", m.OdataId, err)
             continue
         }
         defer r2.Body.Close()
 
         var det LeakDetector
-        json.NewDecoder(r2.Body).Decode(&det)
+        if err := json.NewDecoder(r2.Body).Decode(&det); err != nil {
+            ex.Logf("failed to decode leak detector %s: %v", m.OdataId, err)
+            continue
+        }
 
         leakHealth.WithLabelValues(det.Id, det.LeakDetectorType).Set(healthToValue(det.Status.Health))
         leakState.WithLabelValues(det.Id, det.LeakDetectorType).Set(stateToValue(det.Status.State))
