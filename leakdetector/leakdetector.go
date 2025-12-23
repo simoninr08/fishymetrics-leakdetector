@@ -1,103 +1,56 @@
-package leakdetector
+package leak_detector
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "net/http"
-
-    "github.com/comcast/fishymetrics/exporter"
-    "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promauto"
+	"encoding/json"
+	"github.com/comcast/fishymetrics/common"
+	"github.com/comcast/fishymetrics/exporter"
+	"github.com/comcast/fishymetrics/pool"
 )
 
-type LeakDetectorsCollection struct {
-    Members []struct {
-        OdataId string `json:"@odata.id"`
-    } `json:"Members"`
+type LeakResponse struct {
+	Id            string `json:"Id"`
+	DetectorState string `json:"DetectorState"`
+	Name          string `json:"Name"`
+	Status        struct {
+		Health string `json:"Health"`
+	} `json:"Status"`
 }
 
-type LeakDetector struct {
-    Id               string `json:"Id"`
-    LeakDetectorType string `json:"LeakDetectorType"`
-    Status struct {
-        Health string `json:"Health"`
-        State  string `json:"State"`
-    } `json:"Status"`
+type LeakPlugin struct {
+	DeviceMetrics *map[string]*exporter.Metrics
 }
 
-var (
-    leakHealth = promauto.NewGaugeVec(prometheus.GaugeOpts{
-        Name: "fishymetrics_leak_detector_health",
-        Help: "Redfish leak detector health (0=OK,1=Warn,2=Crit)",
-    }, []string{"detector_id", "type"})
+func (l *LeakPlugin) Handler(body []byte) error {
+	var data LeakResponse
+	if err := json.Unmarshal(body, &data); err != nil {
+		return err
+	}
 
-    leakState = promauto.NewGaugeVec(prometheus.GaugeOpts{
-        Name: "fishymetrics_leak_detector_state",
-        Help: "Redfish leak detector enabled state",
-    }, []string{"detector_id", "type"})
-)
+	// 1.0 = OK, 0.0 = Alerte
+	val := 0.0
+	if data.DetectorState == "OK" && data.Status.Health == "OK" {
+		val = 1.0
+	}
 
-func healthToValue(h string) float64 {
-    switch h {
-    case "OK":
-        return 0
-    case "Warning":
-        return 1
-    case "Critical":
-        return 2
-    }
-    return -1
+	metrics := (*l.DeviceMetrics)["fishyMetrics"]
+	(*metrics)["leak_detector_status"].WithLabelValues(data.Name, data.Id).Set(val)
+
+	return nil
 }
 
-func stateToValue(s string) float64 {
-    switch s {
-    case "Enabled":
-        return 1
-    case "Disabled":
-        return 0
-    }
-    return -1
+func (l *LeakPlugin) Apply(e *exporter.Exporter) error {
+	l.DeviceMetrics = e.DeviceMetrics
+	handlers := []common.Handler{l.Handler}
+
+	endpoints := []string{
+		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_0_ColdPlate",
+		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_0_Manifold",
+		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_1_ColdPlate",
+		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_1_Manifold",
+	}
+
+	for _, url := range endpoints {
+		e.GetPool().AddTask(pool.NewTask(e.Fetch(url), handlers))
+	}
+	return nil
 }
-
-// InitPlugin is called by Fishymetrics to start the plugin
-func InitPlugin(ctx context.Context, ex *exporter.Exporter) error {
-    log.Printf("LeakDetector plugin started")
-
-    client := &http.Client{}
-    collectionURL := "/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors"
-
-    resp, err := client.Get(collectionURL)
-    if err != nil {
-        log.Printf("failed to fetch leak detectors: %v", err)
-        return err
-    }
-    defer resp.Body.Close()
-
-    var coll LeakDetectorsCollection
-    if err := json.NewDecoder(resp.Body).Decode(&coll); err != nil {
-        log.Printf("failed to decode leak detectors collection: %v", err)
-        return err
-    }
-
-    for _, m := range coll.Members {
-        r2, err := client.Get(m.OdataId)
-        if err != nil {
-            log.Printf("failed to fetch %s: %v", m.OdataId, err)
-            continue
-        }
-        defer r2.Body.Close()
-
-        var det LeakDetector
-        if err := json.NewDecoder(r2.Body).Decode(&det); err != nil {
-            log.Printf("failed to decode leak detector %s: %v", m.OdataId, err)
-            continue
-        }
-
-        leakHealth.WithLabelValues(det.Id, det.LeakDetectorType).Set(healthToValue(det.Status.Health))
-        leakState.WithLabelValues(det.Id, det.LeakDetectorType).Set(stateToValue(det.Status.State))
-    }
-
-    return nil
-}
-
