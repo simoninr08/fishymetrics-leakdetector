@@ -32,8 +32,9 @@ func (l *LeakPlugin) Handler(body []byte) error {
 		val = 1.0
 	}
 
-	metrics := (*l.DeviceMetrics)["fishyMetrics"]
-	(*metrics)["leak_detector_status"].WithLabelValues(data.Name, data.Id).Set(val)
+	// Utilisation du groupe "leakMetrics" déclaré dans metrics.go
+	m := (*l.DeviceMetrics)["leakMetrics"]
+	(*m)["leak_detector_status"].WithLabelValues(data.Name, data.Id).Set(val)
 
 	return nil
 }
