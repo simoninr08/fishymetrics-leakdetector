@@ -1,0 +1,20 @@
+--- a/exporter/metrics.go
++++ b/exporter/metrics.go
+@@ -102,6 +102,10 @@ func NewDeviceMetrics() *map[string]*metrics {
+                DeviceMetrics = &metrics{
+                        "deviceInfo": newServerMetric("redfish_device_info", "Current snapshot of device firmware information", nil, []string{"name", "chassisSerialNumber", "chassisModel", "firmwareVersion", "biosVersion"}),
+                }
++               // Leak detector
++               LeakMetrics = &metrics{
++                        "leak_detector_status": newServerMetric("redfish_leak_detector_status", "Status of the leak detector (1=OK, 0=BAD)", nil, []string{"name", "id"}),
++                }
+ 
+                Metrics = &map[string]*metrics{
+                        "up":                       UpMetric,
+@@ -117,6 +121,7 @@ func NewDeviceMetrics() *map[string]*metrics {
+                        "firmwareInventoryMetrics": FirmwareInventoryMetrics,
+                        "memoryMetrics":            MemoryMetrics,
+                        "deviceInfo":               DeviceMetrics,
++                       "leakMetrics":              LeakMetrics,
+                }
+        )

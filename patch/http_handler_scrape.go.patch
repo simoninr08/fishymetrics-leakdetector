@@ -1,0 +1,32 @@
+--- a/http/handlers/scrape.go
++++ b/http/handlers/scrape.go
+@@ -27,6 +27,7 @@ import (
+        "github.com/comcast/fishymetrics/exporter"
+        "github.com/comcast/fishymetrics/exporter/moonshot"
+        "github.com/comcast/fishymetrics/middleware/logging"
++        leak_detector "github.com/simoninr08/fishymetrics-leakdetector/leakdetector"
+        "github.com/comcast/fishymetrics/plugins/nuova"
+        fishy_vault "github.com/comcast/fishymetrics/vault"
+        "go.uber.org/zap"
+@@ -85,6 +86,10 @@ func handler(ctx context.Context, w http.ResponseWriter, r *http.Request, cfg *S
+                        plugs = append(plugs, &nuova.NuovaPlugin{})
+                        log.Debug("nuova plugin added", zap.Any("trace_id", ctx.Value(logging.TraceIDKey("traceID"))))
+                }
++               if p == "leak" {
++                        plugs = append(plugs, &leak_detector.LeakPlugin{})
++                        log.Debug("leak detector plugin added", zap.Any("trace_id", ctx.Value(logging.TraceIDKey("traceID"))))
++                }
+        }
+ 
+        log.Info("started scrape",
+@@ -209,6 +214,10 @@ func partialHandler(ctx context.Context, w http.ResponseWriter, r *http.Request,
+                        plugs = append(plugs, &nuova.NuovaPlugin{})
+                        log.Debug("nuova plugin added", zap.Any("trace_id", ctx.Value(logging.TraceIDKey("traceID"))))
+                }
++               if p == "leak" {
++                        plugs = append(plugs, &leak_detector.LeakPlugin{})
++                        log.Debug("leak detector plugin added", zap.Any("trace_id", ctx.Value(logging.TraceIDKey("traceID"))))
++               }
+        }
+ 
+        log.Info("started partial scrape",

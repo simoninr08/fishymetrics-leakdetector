@@ -1,0 +1,19 @@
+--- a/exporter/partial_exporter.go
++++ b/exporter/partial_exporter.go
+@@ -47,6 +47,7 @@ const (
+        ComponentStorageController ComponentType = "storage_controller"
+        ComponentFirmware          ComponentType = "firmware"
+        ComponentSystem            ComponentType = "system"
++       ComponentLeak              ComponentType = "leak"
+ )
+ 
+ // ValidComponents contains all valid component types for partial scraping
+@@ -59,6 +60,7 @@ var ValidComponents = map[ComponentType]bool{
+        ComponentStorageController: true,
+        ComponentFirmware:          true,
+        ComponentSystem:            true,
++       ComponentLeak:              true,
+ }
+ 
+ // ParseComponents parses a comma-separated list of components and validates them
+
