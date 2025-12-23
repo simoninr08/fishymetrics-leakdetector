@@ -1,9 +1,9 @@
-package leak_detector
+package leakdetector
 
 import (
 	"encoding/json"
 	"github.com/comcast/fishymetrics/common"
-	"github.com/comcast/fishymetrics/exporter"
+	"github.com/comcast/fishymetrics/exporter" // Vérifie que ce chemin est correct
 	"github.com/comcast/fishymetrics/pool"
 )
 
@@ -15,7 +15,8 @@ type LeakResponse struct {
 }
 
 type LeakPlugin struct {
-	DeviceMetrics *map[string]*exporter.Metrics
+	// Utilise le type générique si exporter.Metrics pose problème
+	DeviceMetrics *map[string]*exporter.Metrics 
 }
 
 func (l *LeakPlugin) Handler(body []byte) error {
@@ -26,6 +27,7 @@ func (l *LeakPlugin) Handler(body []byte) error {
 	if data.DetectorState == "OK" && data.Status.Health == "OK" { val = 1.0 }
 
 	m := (*l.DeviceMetrics)["leakMetrics"]
+	// On cast en prometheus.GaugeVec si nécessaire, ou on utilise l'interface existante
 	(*m)["leak_detector_status"].WithLabelValues(data.Name, data.Id).Set(val)
 	return nil
 }
@@ -33,14 +35,24 @@ func (l *LeakPlugin) Handler(body []byte) error {
 func (l *LeakPlugin) Apply(e *exporter.Exporter) error {
 	l.DeviceMetrics = e.DeviceMetrics
 	handlers := []common.Handler{l.Handler}
+	
 	endpoints := []string{
 		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_0_ColdPlate",
 		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_0_Manifold",
 		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_1_ColdPlate",
 		"/redfish/v1/Chassis/Chassis_0/ThermalSubsystem/LeakDetection/LeakDetectors/Chassis_0_LeakDetector_1_Manifold",
 	}
-	for _, url := range endpoints {
-		e.GetPool().AddTask(pool.NewTask(e.Fetch(url), handlers))
+
+	for _, uri := range endpoints {
+		// CORRECTION NewTask : il faut 3 arguments
+		// 1. La fonction à exécuter : e.Get(uri) ou e.Fetch(uri)
+		// 2. Un nom pour la tâche (uri)
+		// 3. Les handlers
+		task := pool.NewTask(func() ([]byte, error) {
+			return e.Get(uri) // Vérifie si la méthode dans exporter est Get ou Fetch
+		}, uri, handlers)
+		
+		e.GetPool().AddTask(task)
 	}
 	return nil
 }
